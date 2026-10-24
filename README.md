@@ -1,6 +1,10 @@
 # Reddit Load more — Firefox extension
 
 
+## Latest diagnostic — ordinary access succeeded, live checks remain open
+
+The controlled trial rendered both ordinary feeds with HTTP200 and normal webdriver exposure, then both installed-add-on feeds, without any network or identity change. This demonstrates variability, not a known denial cause. Native scrolling can remove older post DOM: the live runner now audits cumulative unique post IDs plus exact cursor requests, rather than assuming DOM post counts always grow. The corrected bounded run is pending inspection; no full live pass is claimed.
+
 ## Target
 
 Replace Reddit feed auto-pagination with an explicit, keyboard-operable **Load more** button. Each activation admits one native batch; the next batch waits again. Cover the modern Reddit home and subreddit feed. Keep login, comments, voting, media lazy loading and other requests untouched. No telemetry, account credentials, external packages or remote extension code.
