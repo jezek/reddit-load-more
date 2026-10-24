@@ -90,55 +90,77 @@ try:
     sid = session['sessionId']
     result['browserVersion'] = session['capabilities']['browserVersion']
     result['browserPID'] = session['capabilities'].get('moz:processID')
-    post('/timeouts', {'pageLoad': 60000, 'script': 15000})
+    post('/timeouts', {'pageLoad': 60000, 'script': 30000})
     post('/window/rect', {'width': 1280, 'height': 1000})
     addon = root / 'dist/reddit-load-more-0.1.0.xpi'
     result['addon'] = post('/moz/addon/install', {'path': str(addon), 'temporary': True})
     for name, url in [('home', 'https://www.reddit.com/'), ('subreddit', 'https://www.reddit.com/r/aww/')]:
-        post('/url', {'url': url})
-        time.sleep(4)
-        # Decline optional cookies only; never account actions or CAPTCHA bypass.
-        js("""for(const b of document.querySelectorAll('button')) {
-          if(/^(reject (all|optional cookies)|continue without accepting)$/i.test(b.textContent.trim()))b.click();
-        } return true;""")
-        initial = snapshot()
-        result['pages'][name] = {'initial': initial}
-        assert initial['posts'] > 0 and initial['buttons'] == 1, ('initial-feed-or-gate', initial)
-        assert len(initial['requests']) == 0, ('auto-prefetched-before-choice', initial)
-        js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
-        time.sleep(3)
-        before = snapshot()
-        result['pages'][name]['scrolledWithoutClick'] = before
-        assert len(before['requests']) == 0, ('automatic-batch-request', before)
-        assert before['posts'] == initial['posts'], ('automatic-post-growth', before)
-        button = get_button()
-        screen(name + '-paused')
-        post('/element/' + button + '/click', {})
-        time.sleep(4)
-        after = snapshot()
-        result['pages'][name]['afterClick'] = after
-        assert len(after['requests']) == 1 and after['posts'] > before['posts'], ('click-did-not-load-exactly-one', after)
-        # Native pagination requests the next partial only near its boundary.
-        # A gate need not exist while the newly loaded batch is still below us.
-        js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
-        time.sleep(3)
-        stopped = snapshot()
-        result['pages'][name]['stoppedAgain'] = stopped
-        assert len(stopped['requests']) == 1 and stopped['posts'] == after['posts'], ('second-batch-auto-loaded', stopped)
-        assert stopped['buttons'] == 1, ('next-boundary-gate-missing', stopped)
-        button = get_button()
-        post('/element/' + button + '/value', {'text': '\ue007', 'value': ['\ue007']})
-        time.sleep(4)
-        keyboard = snapshot()
-        result['pages'][name]['afterEnter'] = keyboard
-        assert len(keyboard['requests']) == 2 and keyboard['posts'] > stopped['posts'], ('enter-did-not-load-exactly-one', keyboard)
-        screen(name + '-after-keyboard')
-        js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
-        time.sleep(3)
-        final = snapshot()
-        result['pages'][name]['stoppedAfterEnter'] = final
-        assert len(final['requests']) == 2 and final['posts'] == keyboard['posts'] and final['buttons'] == 1, ('third-batch-not-paused', final)
-    result['ok'] = True
+        try:
+            post('/url', {'url': url})
+            availability = post('/execute/async', {'script': """
+              const done=arguments[arguments.length-1]; let finished=false;
+              const finish=value=>{if(finished)return;finished=true;observer.disconnect();clearTimeout(timer);done(value)};
+              const inspect=()=>{
+                const text=document.body?.innerText || '';
+                if(text.includes("You've been blocked by network security"))finish({blocked:true,reason:'Reddit network-security block'});
+                else if(document.querySelector('shreddit-feed shreddit-post'))finish({blocked:false,feedReady:true});
+              };
+              const observer=new MutationObserver(inspect);observer.observe(document,{childList:true,subtree:true});
+              const timer=setTimeout(()=>finish({blocked:false,feedReady:false,reason:'Feed not ready within 12 seconds'}),12000);
+              inspect();
+            """, 'args': []})
+            result['pages'][name] = {'availability': availability}
+            assert not availability.get('blocked'), availability['reason'] if availability.get('blocked') else ''
+            assert availability.get('feedReady'), availability.get('reason')
+            time.sleep(2)
+            # Decline optional cookies only; never account actions or CAPTCHA bypass.
+            js("""for(const b of document.querySelectorAll('button')) {
+              if(/^(reject (all|optional cookies)|continue without accepting)$/i.test(b.textContent.trim()))b.click();
+            } return true;""")
+            initial = snapshot()
+            result['pages'][name]['initial'] = initial
+            assert initial['posts'] > 0 and initial['buttons'] == 1, ('initial-feed-or-gate', initial)
+            assert len(initial['requests']) == 0, ('auto-prefetched-before-choice', initial)
+            js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
+            time.sleep(3)
+            before = snapshot()
+            result['pages'][name]['scrolledWithoutClick'] = before
+            assert len(before['requests']) == 0, ('automatic-batch-request', before)
+            assert before['posts'] == initial['posts'], ('automatic-post-growth', before)
+            button = get_button()
+            screen(name + '-paused')
+            post('/element/' + button + '/click', {})
+            time.sleep(4)
+            after = snapshot()
+            result['pages'][name]['afterClick'] = after
+            assert len(after['requests']) == 1 and after['posts'] > before['posts'], ('click-did-not-load-exactly-one', after)
+            # Native pagination requests the next partial only near its boundary.
+            # A gate need not exist while the newly loaded batch is still below us.
+            js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
+            time.sleep(3)
+            stopped = snapshot()
+            result['pages'][name]['stoppedAgain'] = stopped
+            assert len(stopped['requests']) == 1 and stopped['posts'] == after['posts'], ('second-batch-auto-loaded', stopped)
+            assert stopped['buttons'] == 1, ('next-boundary-gate-missing', stopped)
+            button = get_button()
+            post('/element/' + button + '/value', {'text': '\ue007', 'value': ['\ue007']})
+            time.sleep(4)
+            keyboard = snapshot()
+            result['pages'][name]['afterEnter'] = keyboard
+            assert len(keyboard['requests']) == 2 and keyboard['posts'] > stopped['posts'], ('enter-did-not-load-exactly-one', keyboard)
+            screen(name + '-after-keyboard')
+            js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
+            time.sleep(3)
+            final = snapshot()
+            result['pages'][name]['stoppedAfterEnter'] = final
+            assert len(final['requests']) == 2 and final['posts'] == keyboard['posts'] and final['buttons'] == 1, ('third-batch-not-paused', final)
+        except Exception as error:
+            result['pages'].setdefault(name, {})['error'] = str(error)
+            screen(name + '-failure')
+            (evidence / (name + '-failure-source.html')).write_text(request('GET', '/session/' + sid + '/source'))
+            if 'bounded-test-interrupted' in str(error):
+                raise
+    result['ok'] = len(result['pages']) == 2 and all('error' not in page for page in result['pages'].values())
 except Exception as error:
     result['error'] = str(error)
     if sid:
