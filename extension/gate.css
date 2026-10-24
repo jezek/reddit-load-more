@@ -1,0 +1,28 @@
+.reddit-load-more-boundary {
+  display: block;
+  box-sizing: border-box;
+  margin: 1rem 0;
+  padding: 1rem;
+  border: 2px solid #78838c;
+  border-radius: 1rem;
+  background: var(--color-neutral-background, #fff);
+  color: var(--color-neutral-content, #1a1a1b);
+  text-align: center;
+  font: 1rem/1.5 system-ui, sans-serif;
+}
+.reddit-load-more-boundary p { margin: 0 0 .75rem; }
+.reddit-load-more-button {
+  box-sizing: border-box;
+  min-height: 48px;
+  min-width: 160px;
+  padding: .65rem 1.4rem;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: #0056bd;
+  color: #fff;
+  font: 700 1rem/1.4 system-ui, sans-serif;
+  cursor: pointer;
+}
+.reddit-load-more-button:focus-visible { outline: 3px solid #0079d3; outline-offset: 4px; }
+.reddit-load-more-button:disabled { opacity: .65; cursor: wait; }
+.reddit-load-more-button[hidden] { display: none; }

@@ -1,0 +1,20 @@
+{
+  "manifest_version": 3,
+  "name": "Reddit Load more",
+  "version": "0.1.0",
+  "description": "Pause Reddit feed auto-pagination until you choose Load more.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "reddit-load-more@jezbot.local",
+      "strict_min_version": "140.0",
+      "data_collection_permissions": {"required": ["none"]}
+    }
+  },
+  "content_scripts": [{
+    "matches": ["https://www.reddit.com/*", "https://reddit.com/*"],
+    "run_at": "document_start",
+    "world": "MAIN",
+    "js": ["gate.js"],
+    "css": ["gate.css"]
+  }]
+}
