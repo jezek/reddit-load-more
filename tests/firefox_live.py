@@ -15,6 +15,7 @@ import urllib.request
 root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--evidence', type=Path, required=True)
+parser.add_argument('--pages', nargs='+', choices=['home', 'subreddit'], default=['home', 'subreddit'])
 args = parser.parse_args()
 evidence = args.evidence.resolve()
 evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -35,7 +36,7 @@ log = (evidence / 'geckodriver.log').open('w')
 driver = subprocess.Popen(['/usr/bin/geckodriver', '--allow-system-access', '--host',
                            '127.0.0.1', '--port', str(port)], stdout=log, stderr=subprocess.STDOUT)
 sid = None
-result = {'ok': False, 'pages': {}, 'driverPID': driver.pid}
+result = {'ok': False, 'requestedPages': args.pages, 'fullTargetCovered': False, 'pages': {}, 'driverPID': driver.pid}
 
 def request(method, path, body=None, timeout=65):
     data = None if body is None else json.dumps(body).encode()
@@ -94,7 +95,9 @@ try:
     post('/window/rect', {'width': 1280, 'height': 1000})
     addon = root / 'dist/reddit-load-more-0.1.0.xpi'
     result['addon'] = post('/moz/addon/install', {'path': str(addon), 'temporary': True})
-    for name, url in [('home', 'https://www.reddit.com/'), ('subreddit', 'https://www.reddit.com/r/aww/')]:
+    routes = {'home': 'https://www.reddit.com/', 'subreddit': 'https://www.reddit.com/r/aww/'}
+    for name in args.pages:
+        url = routes[name]
         try:
             post('/url', {'url': url})
             # Ordinary site redirects can unload an async readiness wait.
@@ -128,7 +131,7 @@ try:
             } return true;""")
             initial = snapshot()
             result['pages'][name]['initial'] = initial
-            assert initial['posts'] > 0 and initial['buttons'] == 1, ('initial-feed-or-gate', initial)
+            assert initial['posts'] > 0, ('initial-feed-missing', initial)
             assert len(initial['requests']) == 0, ('auto-prefetched-before-choice', initial)
             js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
             time.sleep(3)
@@ -136,6 +139,7 @@ try:
             result['pages'][name]['scrolledWithoutClick'] = before
             assert len(before['requests']) == 0, ('automatic-batch-request', before)
             assert before['posts'] == initial['posts'], ('automatic-post-growth', before)
+            assert before['buttons'] == 1, ('boundary-gate-missing', before)
             button = get_button()
             screen(name + '-paused')
             post('/element/' + button + '/click', {})
@@ -169,7 +173,8 @@ try:
             (evidence / (name + '-failure-source.html')).write_text(request('GET', '/session/' + sid + '/source'))
             if 'bounded-test-interrupted' in str(error):
                 raise
-    result['ok'] = len(result['pages']) == 2 and all('error' not in page for page in result['pages'].values())
+    result['ok'] = len(result['pages']) == len(args.pages) and all('error' not in page for page in result['pages'].values())
+    result['fullTargetCovered'] = result['ok'] and set(args.pages) == {'home', 'subreddit'}
 except Exception as error:
     result['error'] = str(error)
     if sid:
