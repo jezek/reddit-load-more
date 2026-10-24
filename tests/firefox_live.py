@@ -59,13 +59,32 @@ def js(script):
 
 def snapshot():
     return js("""const feed=document.querySelector('shreddit-feed');
+    let witness=window.__redditLoadMoreAcceptanceWitness;
+    if(feed && (!witness || witness.feed!==feed)) {
+      witness?.observer.disconnect();
+      const ids=new Set();
+      const remember=node=>{
+        if(node.nodeType!==1)return;
+        const posts=[...(node.matches('shreddit-post')?[node]:[]),...node.querySelectorAll('shreddit-post')];
+        for(const post of posts){const id=post.getAttribute('id')||post.getAttribute('post-id');if(/^t3_[a-z0-9]+$/i.test(id||''))ids.add(id);}
+      };
+      const observer=new MutationObserver(records=>{
+        for(const record of records)for(const node of record.addedNodes)remember(node);
+        remember(feed);
+      });
+      observer.observe(feed,{childList:true,subtree:true});remember(feed);
+      witness=window.__redditLoadMoreAcceptanceWitness={feed,observer,ids};
+      performance.setResourceTimingBufferSize(4000);
+    }
+    // Keep cumulative IDs: Reddit may remove older post DOM during scroll.
     return {url:location.origin+location.pathname, title:document.title,
       posts:feed?.querySelectorAll('shreddit-post').length || 0,
+      seenPostIds:witness?[...witness.ids].sort():[],
       buttons:[...document.querySelectorAll('.reddit-load-more-button')].filter(b=>!b.hidden).length,
       requests:performance.getEntriesByType('resource').filter(e=> {
         const u=new URL(e.name);return u.origin===location.origin &&
         (u.pathname.includes('/feeds/') || u.pathname.includes('/community-more-posts/')) && u.searchParams.has('after');
-      }).map(e=>({path:new URL(e.name).pathname,duration:e.duration})),
+      }).map(e=>({path:new URL(e.name).pathname,after:new URL(e.name).searchParams.get('after'),duration:e.duration})),
       status:[...document.querySelectorAll('.reddit-load-more-boundary [role=status]')].map(x=>x.textContent)}""")
 
 def get_button():
@@ -155,14 +174,14 @@ try:
             } return true;""")
             initial = snapshot()
             result['pages'][name]['initial'] = initial
-            assert initial['posts'] > 0, ('initial-feed-missing', initial)
+            assert initial['posts'] > 0 and initial['seenPostIds'], ('initial-feed-or-identities-missing', initial)
             assert len(initial['requests']) == 0, ('auto-prefetched-before-choice', initial)
             js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
             time.sleep(3)
             before = snapshot()
             result['pages'][name]['scrolledWithoutClick'] = before
             assert len(before['requests']) == 0, ('automatic-batch-request', before)
-            assert before['posts'] == initial['posts'], ('automatic-post-growth', before)
+            assert before['seenPostIds'] == initial['seenPostIds'], ('automatic-post-growth', before)
             assert before['buttons'] == 1, ('boundary-gate-missing', before)
             button = get_button()
             screen(name + '-paused')
@@ -170,27 +189,27 @@ try:
             time.sleep(4)
             after = snapshot()
             result['pages'][name]['afterClick'] = after
-            assert len(after['requests']) == 1 and after['posts'] > before['posts'], ('click-did-not-load-exactly-one', after)
+            assert len(after['requests']) == 1 and set(after['seenPostIds']) > set(before['seenPostIds']), ('click-did-not-load-exactly-one', after)
             # Native pagination requests the next partial only near its boundary.
             # A gate need not exist while the newly loaded batch is still below us.
             js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
             time.sleep(3)
             stopped = snapshot()
             result['pages'][name]['stoppedAgain'] = stopped
-            assert len(stopped['requests']) == 1 and stopped['posts'] == after['posts'], ('second-batch-auto-loaded', stopped)
+            assert len(stopped['requests']) == 1 and stopped['seenPostIds'] == after['seenPostIds'], ('second-batch-auto-loaded', stopped)
             assert stopped['buttons'] == 1, ('next-boundary-gate-missing', stopped)
             button = get_button()
             post('/element/' + button + '/value', {'text': '\ue007', 'value': ['\ue007']})
             time.sleep(4)
             keyboard = snapshot()
             result['pages'][name]['afterEnter'] = keyboard
-            assert len(keyboard['requests']) == 2 and keyboard['posts'] > stopped['posts'], ('enter-did-not-load-exactly-one', keyboard)
+            assert len(keyboard['requests']) == 2 and set(keyboard['seenPostIds']) > set(stopped['seenPostIds']), ('enter-did-not-load-exactly-one', keyboard)
             screen(name + '-after-keyboard')
             js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
             time.sleep(3)
             final = snapshot()
             result['pages'][name]['stoppedAfterEnter'] = final
-            assert len(final['requests']) == 2 and final['posts'] == keyboard['posts'] and final['buttons'] == 1, ('third-batch-not-paused', final)
+            assert len(final['requests']) == 2 and final['seenPostIds'] == keyboard['seenPostIds'] and final['buttons'] == 1, ('third-batch-not-paused', final)
         except Exception as error:
             result['pages'].setdefault(name, {})['error'] = str(error)
             screen(name + '-failure')
