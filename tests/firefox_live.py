@@ -118,12 +118,14 @@ try:
         after = snapshot()
         result['pages'][name]['afterClick'] = after
         assert len(after['requests']) == 1 and after['posts'] > before['posts'], ('click-did-not-load-exactly-one', after)
-        assert after['buttons'] == 1, ('next-gate-missing', after)
+        # Native pagination requests the next partial only near its boundary.
+        # A gate need not exist while the newly loaded batch is still below us.
         js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
         time.sleep(3)
         stopped = snapshot()
         result['pages'][name]['stoppedAgain'] = stopped
         assert len(stopped['requests']) == 1 and stopped['posts'] == after['posts'], ('second-batch-auto-loaded', stopped)
+        assert stopped['buttons'] == 1, ('next-boundary-gate-missing', stopped)
         button = get_button()
         post('/element/' + button + '/value', {'text': '\ue007', 'value': ['\ue007']})
         time.sleep(4)
@@ -131,6 +133,11 @@ try:
         result['pages'][name]['afterEnter'] = keyboard
         assert len(keyboard['requests']) == 2 and keyboard['posts'] > stopped['posts'], ('enter-did-not-load-exactly-one', keyboard)
         screen(name + '-after-keyboard')
+        js('window.scrollTo(0,document.documentElement.scrollHeight);return true')
+        time.sleep(3)
+        final = snapshot()
+        result['pages'][name]['stoppedAfterEnter'] = final
+        assert len(final['requests']) == 2 and final['posts'] == keyboard['posts'] and final['buttons'] == 1, ('third-batch-not-paused', final)
     result['ok'] = True
 except Exception as error:
     result['error'] = str(error)
