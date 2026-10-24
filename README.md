@@ -5,9 +5,11 @@
 
 Replace Reddit feed auto-pagination with an explicit, keyboard-operable **Load more** button. Each activation admits one native batch; the next batch waits again. Cover the modern Reddit home and subreddit feed. Keep login, comments, voting, media lazy loading and other requests untouched. No telemetry, account credentials, external packages or remote extension code.
 
-## Work in progress
+## Status — live acceptance blocked (2026-10-24 16:02 UTC)
 
-The live DOM/network seam is being checked in an isolated system Firefox profile. Implementation and real home/subreddit acceptance are not yet complete. This is not a signed AMO release.
+The candidate is implemented and offline behavior checks pass, but it is **not fully verified or ready for acceptance**. Reddit repeatedly returned its own “You've been blocked by network security” page on home and, in the latest targeted attempt, on r/aww. No bypass, proxy, user-agent spoofing, login or CAPTCHA workaround was attempted. All recorded test workers, Firefox sessions and drivers have stopped; no job is pending.
+
+Partial real home evidence exists: scroll without choice held at3posts/zero cursor requests; one trusted click loaded28posts/exactly one request. Full repeated click/Enter/pause behavior on both live routes remains unverified. Mocked groups, packaging, or a scoped result must not be reported as complete live acceptance. Resume when ordinary permitted Firefox access to both assigned feeds is available; retain the original target and rerun the actual behavior check then. No repeated blocked-site probing is scheduled.
 
 ## Verification plan
 
@@ -46,3 +48,14 @@ python3 -I -B tests/firefox_live.py --evidence /absolute/new/private/evidence-di
 
 Five Node built-in behavior groups pass: delayed native requests/duplicate choices, narrow matching with12cases, retry, pre-upgrade hooking, detached navigation. No npm or third-party modules. The live runner uses the installed `/usr/lib/firefox/firefox` binary behind the system launcher and geckodriver, not a personal profile. Geckodriver's own `--allow-system-access` option enables temporary add-on installation; Firefox rejects supplying its corresponding flag via WebDriver capabilities. The runner has a150-second alarm and cleanup-finally; it reads public pages, declines optional cookies if shown, and never performs account actions or bypasses a challenge.
 
+
+
+## Candidate handoff (not an accepted release)
+
+The standalone repository includes its local history and can be uploaded later by its owner; no remote or GitHub repository was created. `dist/reddit-load-more-0.1.0.xpi` remains the unsigned temporary-install candidate. The source zip and Git bundle under `dist/` preserve the public source and local commit history without runtime/browser evidence, personal profiles or secrets. To restore the bundle into a new directory:
+
+```sh
+git clone /absolute/path/reddit-load-more-candidate.bundle reddit-load-more
+```
+
+The live runner defaults to both routes. `--pages subreddit` or `--pages home` is an explicit narrow diagnostic; `fullTargetCovered` remains false unless both requested routes pass. Ordinary document redirects are handled by bounded readiness reattachment, without reloading or bypassing a refusal.
