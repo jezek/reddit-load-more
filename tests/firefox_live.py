@@ -16,6 +16,7 @@ root = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
 parser.add_argument('--evidence', type=Path, required=True)
 parser.add_argument('--pages', nargs='+', choices=['home', 'subreddit'], default=['home', 'subreddit'])
+parser.add_argument('--baseline-first', action='store_true', help='Test ordinary Firefox availability before installing the add-on; stop on baseline refusal.')
 args = parser.parse_args()
 evidence = args.evidence.resolve()
 evidence.mkdir(mode=0o700, parents=True, exist_ok=False)
@@ -76,6 +77,30 @@ def get_button():
 def screen(name):
     (evidence / (name + '.png')).write_bytes(base64.b64decode(request('GET', '/session/' + sid + '/screenshot')))
 
+def wait_for_feed():
+    # Ordinary site redirects can unload an async readiness wait.
+    # Reattach to the new document; never reload/bypass a refused page.
+    for navigation_try in range(4):
+        try:
+            availability = post('/execute/async', {'script': """
+              const done=arguments[arguments.length-1]; let finished=false;
+              const finish=value=>{if(finished)return;finished=true;observer.disconnect();clearTimeout(timer);done(value)};
+              const inspect=()=>{
+                const text=document.body?.innerText || '';
+                if(text.includes("You've been blocked by network security"))finish({blocked:true,reason:'Reddit network-security block'});
+                else if(document.querySelector('shreddit-feed shreddit-post'))finish({blocked:false,feedReady:true});
+              };
+              const observer=new MutationObserver(inspect);observer.observe(document,{childList:true,subtree:true});
+              const timer=setTimeout(()=>finish({blocked:false,feedReady:false,reason:'Feed not ready within 12 seconds'}),12000);
+              inspect();
+            """, 'args': []})
+            break
+        except RuntimeError as error:
+            if 'Document was unloaded' not in str(error) or navigation_try == 3:
+                raise
+            time.sleep(.5)
+    return availability, navigation_try
+
 try:
     for _ in range(50):
         try:
@@ -93,34 +118,33 @@ try:
     result['browserPID'] = session['capabilities'].get('moz:processID')
     post('/timeouts', {'pageLoad': 60000, 'script': 30000})
     post('/window/rect', {'width': 1280, 'height': 1000})
+    routes = {'home': 'https://www.reddit.com/', 'subreddit': 'https://www.reddit.com/r/aww/'}
+    result['baselineFirst'] = args.baseline_first
+    result['controlledPreferences'] = {'headless': True, 'media.autoplay.default': 5,
+                                       'layers.acceleration.disabled': True, 'webgl.disabled': True}
+    if args.baseline_first:
+        result['baseline'] = {}
+        for name in args.pages:
+            post('/url', {'url': routes[name]})
+            availability, retries = wait_for_feed()
+            observed = js("""return {posts:document.querySelectorAll('shreddit-feed shreddit-post').length,
+              webdriver:navigator.webdriver, resourceCount:performance.getEntriesByType('resource').length,
+              navigationResponseStatus:performance.getEntriesByType('navigation')[0]?.responseStatus ?? null};""")
+            result['baseline'][name] = {'availability': availability, 'navigationWaitRetries': retries, **observed}
+            screen('baseline-' + name)
+            (evidence / ('baseline-' + name + '-source.html')).write_text(request('GET', '/session/' + sid + '/source'))
+            # An explicit ordinary baseline refusal is not an add-on result.
+            # Do not install/retry the add-on or cycle addresses to get past it.
+            if availability.get('blocked') or not availability.get('feedReady'):
+                result['stoppedAt'] = 'baseline-' + name
+                raise RuntimeError('ordinary-baseline-unavailable:' + availability.get('reason', 'unknown'))
     addon = root / 'dist/reddit-load-more-0.1.0.xpi'
     result['addon'] = post('/moz/addon/install', {'path': str(addon), 'temporary': True})
-    routes = {'home': 'https://www.reddit.com/', 'subreddit': 'https://www.reddit.com/r/aww/'}
     for name in args.pages:
         url = routes[name]
         try:
             post('/url', {'url': url})
-            # Ordinary site redirects can unload an async readiness wait.
-            # Reattach to the new document; never reload/bypass a refused page.
-            for navigation_try in range(4):
-                try:
-                    availability = post('/execute/async', {'script': """
-                      const done=arguments[arguments.length-1]; let finished=false;
-                      const finish=value=>{if(finished)return;finished=true;observer.disconnect();clearTimeout(timer);done(value)};
-                      const inspect=()=>{
-                        const text=document.body?.innerText || '';
-                        if(text.includes("You've been blocked by network security"))finish({blocked:true,reason:'Reddit network-security block'});
-                        else if(document.querySelector('shreddit-feed shreddit-post'))finish({blocked:false,feedReady:true});
-                      };
-                      const observer=new MutationObserver(inspect);observer.observe(document,{childList:true,subtree:true});
-                      const timer=setTimeout(()=>finish({blocked:false,feedReady:false,reason:'Feed not ready within 12 seconds'}),12000);
-                      inspect();
-                    """, 'args': []})
-                    break
-                except RuntimeError as error:
-                    if 'Document was unloaded' not in str(error) or navigation_try == 3:
-                        raise
-                    time.sleep(.5)
+            availability, navigation_try = wait_for_feed()
             result['pages'][name] = {'availability': availability, 'navigationWaitRetries': navigation_try}
             assert not availability.get('blocked'), availability['reason'] if availability.get('blocked') else ''
             assert availability.get('feedReady'), availability.get('reason')
