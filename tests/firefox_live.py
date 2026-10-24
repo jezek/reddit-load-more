@@ -97,19 +97,28 @@ try:
     for name, url in [('home', 'https://www.reddit.com/'), ('subreddit', 'https://www.reddit.com/r/aww/')]:
         try:
             post('/url', {'url': url})
-            availability = post('/execute/async', {'script': """
-              const done=arguments[arguments.length-1]; let finished=false;
-              const finish=value=>{if(finished)return;finished=true;observer.disconnect();clearTimeout(timer);done(value)};
-              const inspect=()=>{
-                const text=document.body?.innerText || '';
-                if(text.includes("You've been blocked by network security"))finish({blocked:true,reason:'Reddit network-security block'});
-                else if(document.querySelector('shreddit-feed shreddit-post'))finish({blocked:false,feedReady:true});
-              };
-              const observer=new MutationObserver(inspect);observer.observe(document,{childList:true,subtree:true});
-              const timer=setTimeout(()=>finish({blocked:false,feedReady:false,reason:'Feed not ready within 12 seconds'}),12000);
-              inspect();
-            """, 'args': []})
-            result['pages'][name] = {'availability': availability}
+            # Ordinary site redirects can unload an async readiness wait.
+            # Reattach to the new document; never reload/bypass a refused page.
+            for navigation_try in range(4):
+                try:
+                    availability = post('/execute/async', {'script': """
+                      const done=arguments[arguments.length-1]; let finished=false;
+                      const finish=value=>{if(finished)return;finished=true;observer.disconnect();clearTimeout(timer);done(value)};
+                      const inspect=()=>{
+                        const text=document.body?.innerText || '';
+                        if(text.includes("You've been blocked by network security"))finish({blocked:true,reason:'Reddit network-security block'});
+                        else if(document.querySelector('shreddit-feed shreddit-post'))finish({blocked:false,feedReady:true});
+                      };
+                      const observer=new MutationObserver(inspect);observer.observe(document,{childList:true,subtree:true});
+                      const timer=setTimeout(()=>finish({blocked:false,feedReady:false,reason:'Feed not ready within 12 seconds'}),12000);
+                      inspect();
+                    """, 'args': []})
+                    break
+                except RuntimeError as error:
+                    if 'Document was unloaded' not in str(error) or navigation_try == 3:
+                        raise
+                    time.sleep(.5)
+            result['pages'][name] = {'availability': availability, 'navigationWaitRetries': navigation_try}
             assert not availability.get('blocked'), availability['reason'] if availability.get('blocked') else ''
             assert availability.get('feedReady'), availability.get('reason')
             time.sleep(2)
