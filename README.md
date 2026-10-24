@@ -5,7 +5,12 @@
 
 Replace Reddit feed auto-pagination with an explicit, keyboard-operable **Load more** button. Each activation admits one native batch; the next batch waits again. Cover the modern Reddit home and subreddit feed. Keep login, comments, voting, media lazy loading and other requests untouched. No telemetry, account credentials, external packages or remote extension code.
 
-## Status — live acceptance blocked (2026-10-24 16:02 UTC)
+## Current work — controlled availability comparison reopened
+
+
+The bundles/source zip under `dist/` remain the preserved `4b2aeb5` checkpoint, not the latest diagnostic-runner source. The unsigned XPI is unchanged. Use current Git source for the new flag; refresh handoff archives only after a later accepted milestone.
+
+### Earlier blocked checkpoint (2026-10-24 16:02 UTC)
 
 The candidate is implemented and offline behavior checks pass, but it is **not fully verified or ready for acceptance**. Reddit repeatedly returned its own “You've been blocked by network security” page on home and, in the latest targeted attempt, on r/aww. No bypass, proxy, user-agent spoofing, login or CAPTCHA workaround was attempted. All recorded test workers, Firefox sessions and drivers have stopped; no job is pending.
 
