@@ -157,7 +157,8 @@ try:
             if availability.get('blocked') or not availability.get('feedReady'):
                 result['stoppedAt'] = 'baseline-' + name
                 raise RuntimeError('ordinary-baseline-unavailable:' + availability.get('reason', 'unknown'))
-    addon = root / 'dist/reddit-load-more-0.1.0.xpi'
+    version = json.loads((root / 'extension/manifest.json').read_text())['version']
+    addon = root / 'dist' / f'reddit-load-more-{version}.xpi'
     result['addon'] = post('/moz/addon/install', {'path': str(addon), 'temporary': True})
     for name in args.pages:
         url = routes[name]

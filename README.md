@@ -12,7 +12,7 @@ Each activation admits one batch chosen by Reddit; subsequent batches wait again
 4. Refresh any open Reddit tabs and scroll to the end of the loaded feed.
 
 Alternatively, build an XPI with `python3 tools/package.py` and select
-`dist/reddit-load-more-0.1.0.xpi`. The package is unsigned: temporary add-ons
+`dist/reddit-load-more-0.1.1.xpi`. The package is unsigned: temporary add-ons
 are removed when Firefox restarts. Permanent installation requires Mozilla signing.
 To remove it sooner, disable or remove the add-on in Firefox and refresh Reddit.
 
@@ -22,9 +22,28 @@ The add-on was tested on modern Reddit home and r/aww in Firefox 158.0.1,
 using a logged-out session. Both feeds paused without automatic cursor requests;
 a trusted click and then a focused Enter each loaded one batch, followed by
 another stable pause. The test and its limits are described in [ACCEPTANCE.md](ACCEPTANCE.md).
-The manifest requires Firefox 140 or newer; other versions, logged-in feeds,
+The manifest requires Firefox 142 or newer; other versions, logged-in feeds,
 old/mobile Reddit and all communities or sort modes have not all been tested.
 Mouse and keyboard activation were tested, but this is not a full accessibility audit.
+
+### Version 0.1.1 compatibility correction
+
+The shared Firefox minimum is now **142.0** (previously 140.0). Mozilla's
+`data_collection_permissions` declaration is supported from desktop Firefox 140
+but only from Firefox for Android 142. Without an Android override, the shared
+minimum also applies to Android, which caused the signing-validation warning.
+This change retains the no-data-collection declaration and leaves the extension's
+JavaScript, CSS, permissions and ID unchanged. Desktop Firefox 140–141 can no
+longer install or run this version; desktop Firefox 142+ remains eligible.
+
+Android runtime behavior has **not** been tested. There is deliberately no
+`gecko_android` declaration advertising Android compatibility on AMO; adding one
+requires separate mobile verification. If installed by another permitted route,
+the shared minimum also excludes Android Firefox 140–141. A 142+ minimum is not
+a claim of tested Android support.
+
+References: [Mozilla data-consent version requirements](https://extensionworkshop.com/documentation/develop/firefox-builtin-data-consent/)
+and [Mozilla platform compatibility rules](https://extensionworkshop.com/documentation/publish/version-compatibility/).
 
 Reddit can change its internal components at any time. The add-on is a browsing
 aid, not a security boundary, and automatic loading may resume if Reddit changes.
